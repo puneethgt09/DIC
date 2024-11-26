@@ -19,6 +19,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.preprocessing import LabelEncoder
+from sklearn.impute import SimpleImputer
 
 # Configure Streamlit
 st.title("Data Cleaning and Machine Learning App")
@@ -78,14 +79,21 @@ if uploaded_file:
         X = dataset.drop(target_column, axis=1)
         y = dataset[target_column]
 
-        # Handle non-numeric columns
+        # Convert non-numeric columns in X to dummy variables
         X = pd.get_dummies(X, drop_first=True)
+
+        # Encode target variable
         le = LabelEncoder()
         y = le.fit_transform(y)
 
+        # Handle missing values in X
+        imputer = SimpleImputer(strategy="mean")  # Replace missing values with column mean
+        X = imputer.fit_transform(X)
+
+        # Split the dataset
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Model Training
+        # Train the selected model
         if model_type == "Logistic Regression":
             model = LogisticRegression(max_iter=1000)
         elif model_type == "KNN":
@@ -108,14 +116,13 @@ if uploaded_file:
         sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
         st.pyplot(plt)
 
-        # Feature Importance or Coefficients
+        # Feature Importance for Random Forest
         if model_type == "Random Forest":
             importances = model.feature_importances_
-            indices = np.argsort(importances)[::-1]
             st.write("### Feature Importances")
             plt.figure(figsize=(10, 6))
-            sns.barplot(x=X.columns[indices], y=importances[indices], palette="coolwarm")
+            sns.barplot(x=np.arange(len(importances)), y=importances, palette="coolwarm")
             plt.title("Feature Importances")
-            plt.xticks(rotation=90)
             st.pyplot(plt)
+
 
