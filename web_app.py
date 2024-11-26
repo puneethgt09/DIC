@@ -10,94 +10,112 @@ Original file is located at
 import streamlit as st
 import pandas as pd
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import classification_report, mean_squared_error
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 
-# App title
+# Configure Streamlit
 st.title("Data Cleaning and Machine Learning App")
 
-# Sidebar options
-st.sidebar.title("Options")
-uploaded_file = st.sidebar.file_uploader("Upload a dataset (CSV or Excel)", type=["csv", "xlsx"])
+# File upload
+uploaded_file = st.sidebar.file_uploader("Upload your dataset (CSV only)", type="csv")
 
 if uploaded_file:
-    # Load dataset
-    file_extension = uploaded_file.name.split('.')[-1]
-    if file_extension == "csv":
-        df = pd.read_csv(uploaded_file)
-    elif file_extension == "xlsx":
-        df = pd.read_excel(uploaded_file)
-
+    # Load the dataset
+    dataset = pd.read_csv(uploaded_file)
     st.write("### Original Dataset")
-    st.dataframe(df.head())
+    st.dataframe(dataset.head())
+    st.write(f"Dataset Shape: {dataset.shape}")
 
     # Data Cleaning
     st.sidebar.subheader("Data Cleaning Options")
-
-    # Handle missing values
-    if st.sidebar.checkbox("Remove missing values"):
-        df = df.dropna()
-        st.write("### Dataset After Removing Missing Values")
-        st.dataframe(df.head())
-
-    # Drop duplicate rows
     if st.sidebar.checkbox("Remove duplicate rows"):
-        df = df.drop_duplicates()
-        st.write("### Dataset After Removing Duplicates")
-        st.dataframe(df.head())
+        dataset = dataset.drop_duplicates()
+        st.write("### After Removing Duplicate Rows")
+        st.dataframe(dataset.head())
+        st.write(f"Dataset Shape: {dataset.shape}")
 
-    # Label encoding for categorical columns
-    if st.sidebar.checkbox("Encode categorical variables"):
-        label_encoders = {}
-        for col in df.select_dtypes(include=['object']).columns:
-            le = LabelEncoder()
-            df[col] = le.fit_transform(df[col])
-            label_encoders[col] = le
-        st.write("### Dataset After Encoding Categorical Variables")
-        st.dataframe(df.head())
+    if st.sidebar.checkbox("Remove null values"):
+        target_column = st.sidebar.selectbox("Select Target Column for Null Value Removal", dataset.columns)
+        dataset = dataset.dropna(subset=[target_column])
+        st.write("### After Removing Null Values")
+        st.dataframe(dataset.head())
+        st.write(f"Dataset Shape: {dataset.shape}")
+        st.write("Null values per column:")
+        st.write(dataset.isnull().sum())
+
+    if st.sidebar.checkbox("Clean string data"):
+        if "Gender" in dataset.columns:
+            dataset['Gender'] = dataset['Gender'].replace(
+                {'Male': 'male', 'M': 'male', 'Female': 'female', 'F': 'female'})
+        columns_to_lowercase = [col for col in ['Customer Type', 'Type Of Travel', 'Class'] if col in dataset.columns]
+        if columns_to_lowercase:
+            dataset[columns_to_lowercase] = dataset[columns_to_lowercase].apply(lambda x: x.str.lower())
+        st.write("### After Cleaning String Data")
+        st.dataframe(dataset.head())
+
+    if st.sidebar.checkbox("Correct data types"):
+        if "Departure Delay In Minutes" in dataset.columns:
+            dataset = dataset[dataset['Departure Delay In Minutes'].apply(lambda x: str(x).isdigit())]
+            dataset['Departure Delay In Minutes'] = dataset['Departure Delay In Minutes'].astype(float)
+            st.write("### After Correcting Data Types")
+            st.dataframe(dataset.head())
+            st.write(f"Datatype of 'Departure Delay In Minutes': {dataset['Departure Delay In Minutes'].dtype}")
 
     # Machine Learning
     st.sidebar.subheader("Machine Learning Options")
-    target_column = st.sidebar.selectbox("Select Target Column", df.columns)
-    model_type = st.sidebar.radio("Select Model Type", ["Classification", "Regression"])
+    target_column = st.sidebar.selectbox("Select Target Column", dataset.columns)
+    model_type = st.sidebar.radio("Select Model Type", ["Logistic Regression", "KNN", "Random Forest", "SVM"])
 
     if target_column and st.sidebar.button("Train Model"):
-        # Splitting the dataset
-        X = df.drop(columns=[target_column])
-        y = df[target_column]
+        # Preprocessing and splitting the dataset
+        X = dataset.drop(target_column, axis=1)
+        y = dataset[target_column]
 
-        # Handle non-numeric features in X
+        # Handle non-numeric columns
         X = pd.get_dummies(X, drop_first=True)
+        le = LabelEncoder()
+        y = le.fit_transform(y)
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Train the chosen model
-        if model_type == "Classification":
-            model = RandomForestClassifier(random_state=42)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
+        # Model Training
+        if model_type == "Logistic Regression":
+            model = LogisticRegression(max_iter=1000)
+        elif model_type == "KNN":
+            model = KNeighborsClassifier(n_neighbors=5)
+        elif model_type == "Random Forest":
+            model = RandomForestClassifier(n_estimators=100, random_state=42)
+        elif model_type == "SVM":
+            model = SVC(kernel="linear")
 
-            # Display results
-            st.write("### Classification Report")
-            st.text(classification_report(y_test, y_pred))
-        elif model_type == "Regression":
-            model = LinearRegression()
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
 
-            # Display results
-            st.write("### Regression Metrics")
-            mse = mean_squared_error(y_test, y_pred)
-            st.write(f"Mean Squared Error: {mse}")
+        # Display Metrics
+        st.write("### Classification Report")
+        st.text(classification_report(y_test, y_pred))
 
-        st.write("### Feature Importance" if model_type == "Classification" else "### Model Coefficients")
-        st.dataframe(pd.DataFrame({
-            "Feature": X.columns,
-            "Importance": model.feature_importances_ if model_type == "Classification" else model.coef_
-        }).sort_values(by="Importance", ascending=False))
+        # Visualization
+        st.write("### Confusion Matrix")
+        cm = confusion_matrix(y_test, y_pred)
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+        st.pyplot(plt)
 
-else:
-    st.write("### Please upload a dataset to begin.")
+        # Feature Importance or Coefficients
+        if model_type == "Random Forest":
+            importances = model.feature_importances_
+            indices = np.argsort(importances)[::-1]
+            st.write("### Feature Importances")
+            plt.figure(figsize=(10, 6))
+            sns.barplot(x=X.columns[indices], y=importances[indices], palette="coolwarm")
+            plt.title("Feature Importances")
+            plt.xticks(rotation=90)
+            st.pyplot(plt)
+
